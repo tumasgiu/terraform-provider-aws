@@ -50,7 +50,20 @@ func resourceAwsWafWebAcl() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"action": &schema.Schema{
 							Type:     schema.TypeSet,
-							Required: true,
+							Optional: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"type": &schema.Schema{
+										Type:     schema.TypeString,
+										Required: true,
+									},
+								},
+							},
+						},
+						"override_action": &schema.Schema{
+							Type:     schema.TypeSet,
+							Optional: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -72,6 +85,7 @@ func resourceAwsWafWebAcl() *schema.Resource {
 							ValidateFunc: validation.StringInSlice([]string{
 								waf.WafRuleTypeRegular,
 								waf.WafRuleTypeRateBased,
+								waf.WafRuleTypeGroup,
 							}, false),
 						},
 						"rule_id": &schema.Schema{

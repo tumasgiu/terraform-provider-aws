@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/waf"
 	"github.com/aws/aws-sdk-go/service/wafregional"
 	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform/helper/validation"
 )
 
 func resourceAwsWafRegionalWebAcl() *schema.Resource {
@@ -48,16 +49,48 @@ func resourceAwsWafRegionalWebAcl() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"action": &schema.Schema{
 							Type:     schema.TypeList,
-							Required: true,
+							Optional: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"type": &schema.Schema{
 										Type:     schema.TypeString,
 										Required: true,
+										ValidateFunc: validation.StringInSlice([]string{
+											wafregional.WafActionTypeAllow,
+											wafregional.WafActionTypeBlock,
+											wafregional.WafActionTypeCount,
+										}, false),
 									},
 								},
 							},
+						},
+						"override_action": &schema.Schema{
+							Type:     schema.TypeList,
+							Optional: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"type": &schema.Schema{
+										Type:     schema.TypeString,
+										Optional: true,
+										ValidateFunc: validation.StringInSlice([]string{
+											wafregional.WafOverrideActionTypeCount,
+											wafregional.WafOverrideActionTypeNone,
+										}, false),
+									},
+								},
+							},
+						},
+						"type": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  waf.WafRuleTypeRegular,
+							ValidateFunc: validation.StringInSlice([]string{
+								waf.WafRuleTypeRegular,
+								waf.WafRuleTypeRateBased,
+								waf.WafRuleTypeGroup,
+							}, false),
 						},
 						"priority": &schema.Schema{
 							Type:     schema.TypeInt,
@@ -217,11 +250,21 @@ func flattenDefaultActionWR(n *waf.WafAction) []map[string]interface{} {
 func flattenWafWebAclRules(ts []*waf.ActivatedRule) []interface{} {
 	out := make([]interface{}, len(ts), len(ts))
 	for i, r := range ts {
-		actionMap := map[string]interface{}{
-			"type": *r.Action.Type,
-		}
 		m := make(map[string]interface{})
-		m["action"] = []interface{}{actionMap}
+		ruleType := *r.Type
+		switch ruleType {
+		case wafregional.WafRuleTypeGroup:
+			overrideActionMap := map[string]interface{}{
+				"type": *r.OverrideAction.Type,
+			}
+			m["override_action"] = []interface{}{overrideActionMap}
+		default:
+			actionMap := map[string]interface{}{
+				"type": *r.Action.Type,
+			}
+			m["action"] = []interface{}{actionMap}
+		}
+		m["type"] = ruleType
 		m["priority"] = *r.Priority
 		m["rule_id"] = *r.RuleId
 		out[i] = m
@@ -230,11 +273,20 @@ func flattenWafWebAclRules(ts []*waf.ActivatedRule) []interface{} {
 }
 
 func expandWafWebAclUpdate(updateAction string, aclRule map[string]interface{}) *waf.WebACLUpdate {
-	ruleAction := aclRule["action"].([]interface{})[0].(map[string]interface{})
+	ruleType := aclRule["type"].(string)
 	rule := &waf.ActivatedRule{
-		Action:   &waf.WafAction{Type: aws.String(ruleAction["type"].(string))},
+		Type:     &ruleType,
 		Priority: aws.Int64(int64(aclRule["priority"].(int))),
 		RuleId:   aws.String(aclRule["rule_id"].(string)),
+	}
+
+	switch ruleType {
+	case wafregional.WafRuleTypeGroup:
+		ruleAction := aclRule["override_action"].([]interface{})[0].(map[string]interface{})
+		rule.OverrideAction = &waf.WafOverrideAction{Type: aws.String(ruleAction["type"].(string))}
+	default:
+		ruleAction := aclRule["action"].([]interface{})[0].(map[string]interface{})
+		rule.Action = &waf.WafAction{Type: aws.String(ruleAction["type"].(string))}
 	}
 
 	update := &waf.WebACLUpdate{
