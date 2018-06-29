@@ -389,6 +389,10 @@ func resourceAwsRDSClusterCreate(d *schema.ResourceData, meta interface{}) error
 			opts.EnableCloudwatchLogsExports = expandStringList(attr.([]interface{}))
 		}
 
+		if attr, ok := d.GetOk("kms_key_id"); ok {
+			opts.KmsKeyId = aws.String(attr.(string))
+		}
+
 		// Check if any of the parameters that require a cluster modification after creation are set
 		var clusterUpdate bool
 		if attr := d.Get("vpc_security_group_ids").(*schema.Set); attr.Len() > 0 {
